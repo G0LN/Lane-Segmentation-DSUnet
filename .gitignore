@@ -3,3 +3,7 @@
 GEMINI.md
 *SKILL.md
 data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation
+data/train
+data/valid
+checkpoints
+logs

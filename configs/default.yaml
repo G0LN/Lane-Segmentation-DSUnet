@@ -2,14 +2,11 @@
 
 # Dataset parameters
 dataset:
-  train_images_dir: "data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation/train"
-  train_json_path:  "data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation/train/_annotations.coco.json"
+  train_images_dir: "data/train"
+  train_json_path:  "data/train/_annotations.coco.json"
   
-  val_images_dir:   "data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation/valid"
-  val_json_path:    "data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation/valid/_annotations.coco.json"
-  
-  test_images_dir:  "data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation/valid"
-  test_json_path:   "data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation/valid/_annotations.coco.json"
+  val_images_dir:   "data/valid"
+  val_json_path:    "data/valid/_annotations.coco.json"
   
   image_height: 256
   image_width: 512
