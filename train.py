@@ -1,0 +1,131 @@
+import os
+import yaml
+import torch
+import torch.optim as optim
+import numpy as np
+from tqdm import tqdm
+
+from models import DSUnet
+from data import get_dataloaders
+from utils import (get_criterion, get_metrics, compute_confusion_matrix, 
+                   get_metrics_from_conf_matrix, Logger, set_seed, save_checkpoint)
+from utils.plotters import plot_training_curves, plot_confusion_matrix
+
+def train_epoch(model, dataloader, criterion, optimizer, device):
+    model.train()
+    running_loss = 0.0
+    for images, masks in tqdm(dataloader, desc="Training"):
+        images = images.to(device)
+        masks = masks.to(device)
+        
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, masks)
+        loss.backward()
+        optimizer.step()
+        
+        running_loss += loss.item()
+        
+    return running_loss / len(dataloader)
+
+def validate_epoch(model, dataloader, criterion, device, num_classes):
+    model.eval()
+    running_loss = 0.0
+    conf_matrix = np.zeros((num_classes, num_classes))
+    
+    with torch.no_grad():
+        for images, masks in tqdm(dataloader, desc="Validation"):
+            images = images.to(device)
+            masks = masks.to(device)
+            
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+            running_loss += loss.item()
+            
+            # Compute argmax and update confusion matrix incrementally
+            preds = torch.argmax(outputs, dim=1)
+            conf_matrix += compute_confusion_matrix(preds, masks, num_classes)
+            
+    metrics = get_metrics_from_conf_matrix(conf_matrix)
+    return running_loss / len(dataloader), metrics
+
+def main(config_path="configs/default.yaml"):
+    # Load configuration
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+        
+    set_seed(config['training']['seed'])
+    device = torch.device(config['training']['device'] if torch.cuda.is_available() else "cpu")
+    num_classes = config['model']['num_classes']
+    
+    # Dataloaders
+    train_loader, val_loader = get_dataloaders(config)
+    
+    # Model
+    model = DSUnet(
+        in_channels=config['model']['in_channels'], 
+        num_classes=num_classes
+    ).to(device)
+    
+    # Loss and Optimizer
+    criterion = get_criterion(config['loss']['type'])
+    optimizer = optim.Adam(model.parameters(), 
+                           lr=config['training']['learning_rate'], 
+                           weight_decay=config['training']['weight_decay'])
+    
+    # Logger
+    logger = Logger(config['training']['log_dir'])
+    
+    # History for plotting
+    history = {
+        'train_loss': [], 'val_loss': [],
+        'val_miou': [], 'val_precision': [], 
+        'val_recall': [], 'val_f1': []
+    }
+    
+    best_miou = 0.0
+    num_epochs = config['training']['epochs']
+    
+    print(f"Starting training for {num_epochs} epochs on {device}...")
+    for epoch in range(num_epochs):
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
+        
+        train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss, val_metrics = validate_epoch(model, val_loader, criterion, device, num_classes)
+        
+        print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val mIoU: {val_metrics['mIoU']:.4f}")
+        print(f"Precision: {val_metrics['Precision']:.4f} | Recall: {val_metrics['Recall']:.4f} | F1: {val_metrics['F1']:.4f}")
+        
+        logger.log_scalar("Loss/train", train_loss, epoch)
+        logger.log_scalar("Loss/val", val_loss, epoch)
+        logger.log_scalar("Metrics/mIoU", val_metrics['mIoU'], epoch)
+        
+        # Save to history
+        history['train_loss'].append(train_loss)
+        history['val_loss'].append(val_loss)
+        history['val_miou'].append(val_metrics['mIoU'])
+        history['val_precision'].append(val_metrics['Precision'])
+        history['val_recall'].append(val_metrics['Recall'])
+        history['val_f1'].append(val_metrics['F1'])
+        
+        # Plot curves dynamically
+        plot_training_curves(history, config['training']['log_dir'])
+        
+        # Plot confusion matrix only periodically or at the end to save time
+        if (epoch + 1) % 10 == 0 or (epoch + 1) == num_epochs:
+            class_names = [f"Class_{i}" for i in range(num_classes)] # Replace with actual names if available
+            plot_confusion_matrix(val_metrics['ConfusionMatrix'], class_names, config['training']['log_dir'], epoch=epoch+1)
+        
+        # Save checkpoint
+        is_best = val_metrics['mIoU'] > best_miou
+        best_miou = max(val_metrics['mIoU'], best_miou)
+        
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'state_dict': model.state_dict(),
+            'best_miou': best_miou,
+            'optimizer': optimizer.state_dict(),
+        }, is_best, save_dir=config['training']['save_dir'])
+
+if __name__ == "__main__":
+    main()

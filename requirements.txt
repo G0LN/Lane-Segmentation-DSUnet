@@ -1,0 +1,15 @@
+torch>=2.0.0
+torchvision>=0.15.0
+numpy
+opencv-python
+Pillow
+PyYAML
+tqdm
+matplotlib
+scikit-learn
+seaborn
+thop
+pycocotools
+# albumentations
+# tensorboard
+# wandb
