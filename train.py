@@ -83,11 +83,28 @@ def main(config_path="configs/default.yaml"):
         'val_recall': [], 'val_f1': []
     }
     
+    start_epoch = 0
     best_miou = 0.0
     num_epochs = config['training']['epochs']
     
+    # Auto-resume logic
+    checkpoint_path = os.path.join(config['training']['save_dir'], "checkpoint.pth")
+    if os.path.exists(checkpoint_path):
+        print(f"\nFound existing checkpoint at {checkpoint_path}. Resuming training...")
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            start_epoch = checkpoint['epoch']
+            best_miou = checkpoint['best_miou']
+            if 'history' in checkpoint:
+                history = checkpoint['history']
+            print(f"Successfully resumed from epoch {start_epoch} with best mIoU {best_miou:.4f}")
+        except Exception as e:
+            print(f"Could not load checkpoint: {e}. Starting from scratch.")
+            
     print(f"Starting training for {num_epochs} epochs on {device}...")
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
         
         train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
@@ -125,6 +142,7 @@ def main(config_path="configs/default.yaml"):
             'state_dict': model.state_dict(),
             'best_miou': best_miou,
             'optimizer': optimizer.state_dict(),
+            'history': history,
         }, is_best, save_dir=config['training']['save_dir'])
 
 if __name__ == "__main__":

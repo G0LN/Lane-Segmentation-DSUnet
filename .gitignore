@@ -7,3 +7,8 @@ data/train
 data/valid
 checkpoints
 logs
+docs
+kaggle_logs
+kaggle_run.ipynb
+kernel-metadata.json
+DSUNet_Architecture.md

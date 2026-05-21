@@ -6,12 +6,17 @@ from PIL import Image
 from models import DSUnet
 from utils import load_checkpoint
 
-# Color map for visualizing classes (e.g., 0: background, 1: lane, 2: car, 3: obstacle)
+# Color map for visualizing classes (0: background, 1: continuous white, 2: continuous yellow, 3: dashed, 4: double continuous yellow, 5: main-lane, 6: other-lane, 7: turn-lane, 8: vehicle)
 COLORS = np.array([
-    [0, 0, 0],         # Background - Black
-    [255, 0, 0],       # Lane - Red
-    [0, 255, 0],       # Car - Green
-    [0, 0, 255]        # Obstacle - Blue
+    [0, 0, 0],         # 0: Background/new-tusimple - Black
+    [255, 255, 255],   # 1: continuous white - White
+    [255, 255, 0],     # 2: continuous yellow - Yellow
+    [128, 128, 128],   # 3: dashed - Gray
+    [255, 165, 0],     # 4: double continuous yellow - Orange
+    [0, 255, 0],       # 5: main-lane - Green
+    [0, 0, 255],       # 6: other-lane - Blue
+    [255, 0, 255],     # 7: turn-lane - Magenta
+    [0, 255, 255]      # 8: vehicle - Cyan
 ], dtype=np.uint8)
 
 def predict_image(image_path, model, device, img_height, img_width):
