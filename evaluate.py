@@ -37,7 +37,8 @@ def evaluate(config_path, checkpoint_path):
     # Initialize and load model
     model = DSUnet(
         in_channels=config['model']['in_channels'], 
-        num_classes=num_classes
+        num_classes=num_classes,
+        dropout=config['model'].get('dropout', 0.5)
     ).to(device)
     
     print(f"Loading checkpoint from {checkpoint_path}")

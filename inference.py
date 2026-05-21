@@ -52,7 +52,8 @@ def inference(config_path, checkpoint_path, image_path, output_path):
     
     model = DSUnet(
         in_channels=config['model']['in_channels'], 
-        num_classes=config['model']['num_classes']
+        num_classes=config['model']['num_classes'],
+        dropout=config['model'].get('dropout', 0.5)
     ).to(device)
     
     load_checkpoint(checkpoint_path, model)

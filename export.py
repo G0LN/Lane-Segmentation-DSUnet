@@ -16,7 +16,11 @@ def export_and_profile(config_path, output_onnx="dsunet.onnx"):
     img_w = config['dataset']['image_width']
     
     # Init model
-    model = DSUnet(in_channels=in_channels, num_classes=num_classes).to(device)
+    model = DSUnet(
+        in_channels=in_channels, 
+        num_classes=num_classes,
+        dropout=config['model'].get('dropout', 0.5)
+    ).to(device)
     model.eval()
     
     # Create dummy input

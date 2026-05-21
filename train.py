@@ -64,7 +64,8 @@ def main(config_path="configs/default.yaml"):
     # Model
     model = DSUnet(
         in_channels=config['model']['in_channels'], 
-        num_classes=num_classes
+        num_classes=num_classes,
+        dropout=config['model'].get('dropout', 0.5)
     ).to(device)
     
     # Loss and Optimizer
@@ -86,6 +87,8 @@ def main(config_path="configs/default.yaml"):
     start_epoch = 0
     best_miou = 0.0
     num_epochs = config['training']['epochs']
+    early_stopping_patience = config['training'].get('early_stopping_patience', None)
+    early_stopping_counter = 0
     
     # Auto-resume logic
     checkpoint_path = os.path.join(config['training']['save_dir'], "checkpoint.pth")
@@ -97,9 +100,11 @@ def main(config_path="configs/default.yaml"):
             optimizer.load_state_dict(checkpoint['optimizer'])
             start_epoch = checkpoint['epoch']
             best_miou = checkpoint['best_miou']
+            early_stopping_counter = checkpoint.get('early_stopping_counter', 0)
             if 'history' in checkpoint:
                 history = checkpoint['history']
-            print(f"Successfully resumed from epoch {start_epoch} with best mIoU {best_miou:.4f}")
+            patience_str = f"/{early_stopping_patience}" if early_stopping_patience is not None else ""
+            print(f"Successfully resumed from epoch {start_epoch} with best mIoU {best_miou:.4f} (Early Stopping: {early_stopping_counter}{patience_str})")
         except Exception as e:
             print(f"Could not load checkpoint: {e}. Starting from scratch.")
             
@@ -133,9 +138,16 @@ def main(config_path="configs/default.yaml"):
             class_names = [f"Class_{i}" for i in range(num_classes)] # Replace with actual names if available
             plot_confusion_matrix(val_metrics['ConfusionMatrix'], class_names, config['training']['log_dir'], epoch=epoch+1)
         
-        # Save checkpoint
+        # Save checkpoint and early stopping check
         is_best = val_metrics['mIoU'] > best_miou
-        best_miou = max(val_metrics['mIoU'], best_miou)
+        if is_best:
+            best_miou = val_metrics['mIoU']
+            early_stopping_counter = 0
+            print(f"✨ New best validation mIoU: {best_miou:.4f}! Saving best model...")
+        else:
+            early_stopping_counter += 1
+            patience_msg = f"/{early_stopping_patience}" if early_stopping_patience is not None else ""
+            print(f"No improvement in validation mIoU for {early_stopping_counter}{patience_msg} consecutive epochs.")
         
         save_checkpoint({
             'epoch': epoch + 1,
@@ -143,7 +155,13 @@ def main(config_path="configs/default.yaml"):
             'best_miou': best_miou,
             'optimizer': optimizer.state_dict(),
             'history': history,
+            'early_stopping_counter': early_stopping_counter
         }, is_best, save_dir=config['training']['save_dir'])
+        
+        # Trigger early stopping if patience reached
+        if early_stopping_patience is not None and early_stopping_counter >= early_stopping_patience:
+            print(f"\n🛑 Early stopping triggered! Training stopped because validation mIoU did not improve for {early_stopping_patience} consecutive epochs.")
+            break
 
 if __name__ == "__main__":
     main()

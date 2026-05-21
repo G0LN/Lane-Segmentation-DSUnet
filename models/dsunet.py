@@ -8,21 +8,21 @@ class DSUnet(nn.Module):
     DSUnet (Dual Stream Unet) Architecture for Lane Detection / Segmentation.
     Using Depthwise Separable Convolutions to reduce parameters.
     """
-    def __init__(self, in_channels=3, num_classes=4):
+    def __init__(self, in_channels=3, num_classes=4, dropout=0.5):
         super(DSUnet, self).__init__()
         
         # As per DSUNet typical structure:
-        # Dropout layers are usually added in the deeper layers (e.g., last 3 blocks)
+        # Dropout layers are added in the deeper layers, now configurable via a single parameter
         
         self.enc1 = EncoderBlock(in_channels, 64, use_pool=True)
         self.enc2 = EncoderBlock(64, 128, use_pool=True)
         self.enc3 = EncoderBlock(128, 256, use_pool=True)
-        self.enc4 = EncoderBlock(256, 512, use_pool=True, dropout_prob=0.5)
+        self.enc4 = EncoderBlock(256, 512, use_pool=True, dropout_prob=dropout)
         
         # Bottleneck (No pooling)
-        self.bottleneck = EncoderBlock(512, 1024, use_pool=False, dropout_prob=0.5)
+        self.bottleneck = EncoderBlock(512, 1024, use_pool=False, dropout_prob=dropout)
         
-        self.dec4 = DecoderBlock(1024, 512, 512, dropout_prob=0.5) # The third dropout layer
+        self.dec4 = DecoderBlock(1024, 512, 512, dropout_prob=dropout) # The third dropout layer
         self.dec3 = DecoderBlock(512, 256, 256)
         self.dec2 = DecoderBlock(256, 128, 128)
         self.dec1 = DecoderBlock(128, 64, 64)
