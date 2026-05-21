@@ -29,7 +29,7 @@ training:
   epochs: 500
   learning_rate: 0.001
   weight_decay: 0.0001
-  num_workers: 4
+  num_workers: 2
   device: "cuda" # or "cpu"
   save_dir: "checkpoints/"
   log_dir: "logs/"
