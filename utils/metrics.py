@@ -74,3 +74,34 @@ def get_metrics(preds, labels, num_classes):
     cm = compute_confusion_matrix(preds, labels, num_classes)
     return get_metrics_from_conf_matrix(cm)
 
+def compute_pr_curve_data(probs, labels, num_classes, thresholds=None):
+    """
+    Computes precision and recall accumulation data at various thresholds for all classes.
+    probs: [N, C, H, W] - Softmax probabilities
+    labels: [N, H, W] - Ground truth class indices
+    thresholds: List of thresholds (default 21 points from 0 to 1)
+    """
+    if thresholds is None:
+        thresholds = np.linspace(0.0, 1.0, 21)
+    num_thresholds = len(thresholds)
+    
+    tp = np.zeros((num_classes, num_thresholds))
+    tp_plus_fp = np.zeros((num_classes, num_thresholds))
+    total_gt = np.zeros(num_classes)
+    
+    # Move to CPU/numpy for processing
+    probs_np = probs.cpu().numpy()
+    labels_np = labels.cpu().numpy()
+    
+    for c in range(num_classes):
+        gt_c = (labels_np == c)
+        total_gt[c] = np.sum(gt_c)
+        
+        prob_c = probs_np[:, c, :, :]
+        for t_idx, t in enumerate(thresholds):
+            pred_c = (prob_c >= t)
+            tp[c, t_idx] = np.sum(pred_c & gt_c)
+            tp_plus_fp[c, t_idx] = np.sum(pred_c)
+            
+    return tp, tp_plus_fp, total_gt
+

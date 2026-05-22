@@ -25,7 +25,7 @@ model:
   # Width Scaling (Width Multiplier / Alpha)
   # 1.0: Baseline (6.00M params), 0.5: Lite (1.50M params), 0.25: Tiny (0.38M params)
   # You can configure either 'width_multiplier' or 'alpha'
-  width_multiplier: 1.0
+  width_multiplier: 0.5
 
 # Training hyperparameters
 training:

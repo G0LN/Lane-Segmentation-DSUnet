@@ -8,7 +8,8 @@ from tqdm import tqdm
 from models import DSUnet
 from data import get_dataloaders
 from utils import (get_criterion, get_metrics, compute_confusion_matrix, 
-                   get_metrics_from_conf_matrix, Logger, set_seed, save_checkpoint)
+                   get_metrics_from_conf_matrix, Logger, set_seed, save_checkpoint,
+                   compute_pr_curve_data, plot_precision_recall_curve)
 from utils.plotters import plot_training_curves, plot_confusion_matrix
 
 def train_epoch(model, dataloader, criterion, optimizer, device):
@@ -33,6 +34,13 @@ def validate_epoch(model, dataloader, criterion, device, num_classes):
     running_loss = 0.0
     conf_matrix = np.zeros((num_classes, num_classes))
     
+    # PR Curve accumulation
+    thresholds = np.linspace(0.0, 1.0, 21)
+    num_thresholds = len(thresholds)
+    total_tp = np.zeros((num_classes, num_thresholds))
+    total_tp_plus_fp = np.zeros((num_classes, num_thresholds))
+    total_gt = np.zeros(num_classes)
+    
     with torch.no_grad():
         for images, masks in tqdm(dataloader, desc="Validation"):
             images = images.to(device)
@@ -46,7 +54,25 @@ def validate_epoch(model, dataloader, criterion, device, num_classes):
             preds = torch.argmax(outputs, dim=1)
             conf_matrix += compute_confusion_matrix(preds, masks, num_classes)
             
+            # PR curve accumulation
+            probs = torch.softmax(outputs, dim=1)
+            tp, tp_plus_fp, gt = compute_pr_curve_data(probs, masks, num_classes, thresholds)
+            total_tp += tp
+            total_tp_plus_fp += tp_plus_fp
+            total_gt += gt
+            
     metrics = get_metrics_from_conf_matrix(conf_matrix)
+    
+    # Compute precision and recall curves
+    precision_curve = np.zeros((num_classes, num_thresholds))
+    recall_curve = np.zeros((num_classes, num_thresholds))
+    for c in range(num_classes):
+        precision_curve[c] = total_tp[c] / np.maximum(total_tp_plus_fp[c], 1e-6)
+        recall_curve[c] = total_tp[c] / np.maximum(total_gt[c], 1e-6)
+        
+    metrics['precision_curve'] = precision_curve
+    metrics['recall_curve'] = recall_curve
+    
     return running_loss / len(dataloader), metrics
 
 def main(config_path="configs/default.yaml", resume=False):
@@ -191,9 +217,7 @@ def main(config_path="configs/default.yaml", resume=False):
         plot_training_curves(history, log_dir)
         
         # Plot confusion matrix only periodically or at the end to save time
-        if (epoch + 1) % 10 == 0 or (epoch + 1) == num_epochs:
-            class_names = [f"Class_{i}" for i in range(num_classes)] # Replace with actual names if available
-            plot_confusion_matrix(val_metrics['ConfusionMatrix'], class_names, log_dir, epoch=epoch+1)
+        # (Removed periodic plotting as per user request to only save for best result)
         
         # Save checkpoint and early stopping check
         is_best = val_metrics['mIoU'] > best_miou
@@ -201,6 +225,18 @@ def main(config_path="configs/default.yaml", resume=False):
             best_miou = val_metrics['mIoU']
             early_stopping_counter = 0
             print(f"✨ New best validation mIoU: {best_miou:.4f}! Saving best model...")
+            
+            # Save confusion matrix and precision-recall curve ONLY for the best epoch
+            if num_classes == 9:
+                class_names = ['background', 'continuous white', 'continuous yellow', 'dashed', 'double continuous yellow', 'main-lane', 'other-lane', 'turn-lane', 'vehicle']
+            else:
+                class_names = [f"Class_{i}" for i in range(num_classes)]
+                
+            # Plot and save both raw and normalized confusion matrices
+            plot_confusion_matrix(val_metrics['ConfusionMatrix'], class_names, log_dir, epoch=None)
+            
+            # Plot and save the Precision-Recall curve
+            plot_precision_recall_curve(val_metrics['precision_curve'], val_metrics['recall_curve'], class_names, log_dir)
         else:
             early_stopping_counter += 1
             patience_msg = f"/{early_stopping_patience}" if early_stopping_patience is not None else ""
