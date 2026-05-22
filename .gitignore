@@ -2,6 +2,7 @@
 *__pycache__
 GEMINI.md
 *SKILL.md
+results/
 data/dataset-classes-vehicle-lane-divider-no-video-frame.v1i.coco-segmentation
 data/train
 data/valid
