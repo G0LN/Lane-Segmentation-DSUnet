@@ -8,29 +8,36 @@ class DSUnet(nn.Module):
     DSUnet (Dual Stream Unet) Architecture for Lane Detection / Segmentation.
     Using Depthwise Separable Convolutions to reduce parameters.
     """
-    def __init__(self, in_channels=3, num_classes=4, dropout=0.5):
+    def __init__(self, in_channels=3, num_classes=4, dropout=0.5, width_multiplier=1.0):
         super(DSUnet, self).__init__()
+        
+        # Scale number of channels dynamically based on width_multiplier
+        c1 = int(64 * width_multiplier)
+        c2 = int(128 * width_multiplier)
+        c3 = int(256 * width_multiplier)
+        c4 = int(512 * width_multiplier)
+        c5 = int(1024 * width_multiplier) # Bottleneck
         
         # As per DSUNet typical structure:
         # Dropout layers are added in the deeper layers, now configurable via a single parameter
         
-        self.enc1 = EncoderBlock(in_channels, 64, use_pool=True)
-        self.enc2 = EncoderBlock(64, 128, use_pool=True)
-        self.enc3 = EncoderBlock(128, 256, use_pool=True)
-        self.enc4 = EncoderBlock(256, 512, use_pool=True, dropout_prob=dropout)
+        self.enc1 = EncoderBlock(in_channels, c1, use_pool=True)
+        self.enc2 = EncoderBlock(c1, c2, use_pool=True)
+        self.enc3 = EncoderBlock(c2, c3, use_pool=True)
+        self.enc4 = EncoderBlock(c3, c4, use_pool=True, dropout_prob=dropout)
         
         # Bottleneck (No pooling)
-        self.bottleneck = EncoderBlock(512, 1024, use_pool=False, dropout_prob=dropout)
+        self.bottleneck = EncoderBlock(c4, c5, use_pool=False, dropout_prob=dropout)
         
-        self.dec4 = DecoderBlock(1024, 512, 512, dropout_prob=dropout) # The third dropout layer
-        self.dec3 = DecoderBlock(512, 256, 256)
-        self.dec2 = DecoderBlock(256, 128, 128)
-        self.dec1 = DecoderBlock(128, 64, 64)
+        self.dec4 = DecoderBlock(c5, c4, c4, dropout_prob=dropout) # The third dropout layer
+        self.dec3 = DecoderBlock(c4, c3, c3)
+        self.dec2 = DecoderBlock(c3, c2, c2)
+        self.dec1 = DecoderBlock(c2, c1, c1)
         
         # Final prediction layer: 1x1 Standard Conv
         # We output logits (raw values). If binary, train with BCEWithLogitsLoss.
         # If multiclass, train with CrossEntropyLoss.
-        self.out_conv = nn.Conv2d(64, num_classes, kernel_size=1)
+        self.out_conv = nn.Conv2d(c1, num_classes, kernel_size=1)
 
     def forward(self, x):
         # Encoding
