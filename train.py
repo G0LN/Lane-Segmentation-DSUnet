@@ -49,7 +49,7 @@ def validate_epoch(model, dataloader, criterion, device, num_classes):
     metrics = get_metrics_from_conf_matrix(conf_matrix)
     return running_loss / len(dataloader), metrics
 
-def main(config_path="configs/default.yaml"):
+def main(config_path="configs/default.yaml", resume=False):
     # Load configuration
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -61,11 +61,69 @@ def main(config_path="configs/default.yaml"):
     # Dataloaders
     train_loader, val_loader = get_dataloaders(config)
     
+    # Width Scaling / Alpha
+    width_multiplier = config['model'].get('width_multiplier', config['model'].get('alpha', 1.0))
+    print(f"Model initialization: Width Multiplier (Alpha) = {width_multiplier}")
+    
+    # Determine save and log directories dynamically
+    base_save_dir = config['training']['save_dir']
+    base_log_dir = config['training']['log_dir']
+    
+    import re
+    def get_latest_checkpoint_dir(base_dir):
+        max_num = 0
+        latest_dir = None
+        if os.path.exists(base_dir):
+            for item in os.listdir(base_dir):
+                if os.path.isdir(os.path.join(base_dir, item)):
+                    match = re.match(r"^checkpoint(\d+)$", item)
+                    if match:
+                        num = int(match.group(1))
+                        if num > max_num:
+                            max_num = num
+                            latest_dir = os.path.join(base_dir, item)
+        return latest_dir, max_num
+
+    checkpoint_path = None
+    if resume:
+        latest_dir, max_num = get_latest_checkpoint_dir(base_save_dir)
+        if latest_dir is not None and os.path.exists(os.path.join(latest_dir, "checkpoint.pth")):
+            save_dir = latest_dir
+            log_dir = os.path.join(base_log_dir, f"log{max_num}")
+            checkpoint_path = os.path.join(latest_dir, "checkpoint.pth")
+            print(f"Resuming training in existing directories:")
+            print(f" -> Save directory: {save_dir}")
+            print(f" -> Log directory: {log_dir}")
+        else:
+            # Fallback to new training
+            print(f"No valid checkpoint found to resume under '{base_save_dir}'. Starting a new training run...")
+            latest_dir, max_num = get_latest_checkpoint_dir(base_save_dir)
+            next_num = max_num + 1
+            save_dir = os.path.join(base_save_dir, f"checkpoint{next_num}")
+            log_dir = os.path.join(base_log_dir, f"log{next_num}")
+            os.makedirs(save_dir, exist_ok=True)
+            os.makedirs(log_dir, exist_ok=True)
+            print(f"Created new directories:")
+            print(f" -> Save directory: {save_dir}")
+            print(f" -> Log directory: {log_dir}")
+    else:
+        # Start a new training run
+        latest_dir, max_num = get_latest_checkpoint_dir(base_save_dir)
+        next_num = max_num + 1
+        save_dir = os.path.join(base_save_dir, f"checkpoint{next_num}")
+        log_dir = os.path.join(base_log_dir, f"log{next_num}")
+        os.makedirs(save_dir, exist_ok=True)
+        os.makedirs(log_dir, exist_ok=True)
+        print(f"Created new directories for a fresh run:")
+        print(f" -> Save directory: {save_dir}")
+        print(f" -> Log directory: {log_dir}")
+
     # Model
     model = DSUnet(
         in_channels=config['model']['in_channels'], 
         num_classes=num_classes,
-        dropout=config['model'].get('dropout', 0.5)
+        dropout=config['model'].get('dropout', 0.5),
+        width_multiplier=width_multiplier
     ).to(device)
     
     # Loss and Optimizer
@@ -75,7 +133,7 @@ def main(config_path="configs/default.yaml"):
                            weight_decay=config['training']['weight_decay'])
     
     # Logger
-    logger = Logger(config['training']['log_dir'])
+    logger = Logger(log_dir)
     
     # History for plotting
     history = {
@@ -91,8 +149,7 @@ def main(config_path="configs/default.yaml"):
     early_stopping_counter = 0
     
     # Auto-resume logic
-    checkpoint_path = os.path.join(config['training']['save_dir'], "checkpoint.pth")
-    if os.path.exists(checkpoint_path):
+    if checkpoint_path is not None and os.path.exists(checkpoint_path):
         print(f"\nFound existing checkpoint at {checkpoint_path}. Resuming training...")
         try:
             checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -131,12 +188,12 @@ def main(config_path="configs/default.yaml"):
         history['val_f1'].append(val_metrics['F1'])
         
         # Plot curves dynamically
-        plot_training_curves(history, config['training']['log_dir'])
+        plot_training_curves(history, log_dir)
         
         # Plot confusion matrix only periodically or at the end to save time
         if (epoch + 1) % 10 == 0 or (epoch + 1) == num_epochs:
             class_names = [f"Class_{i}" for i in range(num_classes)] # Replace with actual names if available
-            plot_confusion_matrix(val_metrics['ConfusionMatrix'], class_names, config['training']['log_dir'], epoch=epoch+1)
+            plot_confusion_matrix(val_metrics['ConfusionMatrix'], class_names, log_dir, epoch=epoch+1)
         
         # Save checkpoint and early stopping check
         is_best = val_metrics['mIoU'] > best_miou
@@ -156,7 +213,7 @@ def main(config_path="configs/default.yaml"):
             'optimizer': optimizer.state_dict(),
             'history': history,
             'early_stopping_counter': early_stopping_counter
-        }, is_best, save_dir=config['training']['save_dir'])
+        }, is_best, save_dir=save_dir)
         
         # Trigger early stopping if patience reached
         if early_stopping_patience is not None and early_stopping_counter >= early_stopping_patience:
@@ -164,4 +221,10 @@ def main(config_path="configs/default.yaml"):
             break
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Train DSUnet")
+    parser.add_argument('--config', type=str, default='configs/default.yaml', help='Path to config file')
+    parser.add_argument('--resume', action='store_true', help='Resume training from the latest checkpoint')
+    args = parser.parse_args()
+    
+    main(config_path=args.config, resume=args.resume)

@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import yaml
 import time
+import os
+import re
 from PIL import Image
 from models import DSUnet
 from utils import load_checkpoint
@@ -19,6 +21,32 @@ COLORS = np.array([
     [255, 0, 255],     # 7: turn-lane - Magenta
     [0, 255, 255]      # 8: vehicle - Cyan
 ], dtype=np.uint8)
+
+def resolve_checkpoint_path(checkpoint_path):
+    if not os.path.exists(checkpoint_path):
+        base_dir = os.path.dirname(checkpoint_path)
+        filename = os.path.basename(checkpoint_path)
+        if not base_dir or base_dir == '':
+            base_dir = "checkpoints"
+            
+        max_num = 0
+        latest_dir = None
+        if os.path.exists(base_dir):
+            for item in os.listdir(base_dir):
+                if os.path.isdir(os.path.join(base_dir, item)):
+                    match = re.match(r"^checkpoint(\d+)$", item)
+                    if match:
+                        num = int(match.group(1))
+                        # Only select if the target file actually exists in this folder
+                        if os.path.exists(os.path.join(base_dir, item, filename)):
+                            if num > max_num:
+                                max_num = num
+                                latest_dir = os.path.join(base_dir, item)
+        if latest_dir is not None:
+            possible_path = os.path.join(latest_dir, filename)
+            print(f"Checkpoint not found at '{checkpoint_path}'. Automatically using the latest checkpoint found at: '{possible_path}'")
+            checkpoint_path = possible_path
+    return checkpoint_path
 
 def predict_image(image_path, model, device, img_height, img_width, lane_threshold=0.15):
     # Load and preprocess image
@@ -57,15 +85,20 @@ def predict_image(image_path, model, device, img_height, img_width, lane_thresho
     return image_np, pred_colored
 
 def inference(config_path, checkpoint_path, image_path, output_path, lane_threshold=0.15):
+    checkpoint_path = resolve_checkpoint_path(checkpoint_path)
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
         
     device = torch.device(config['training']['device'] if torch.cuda.is_available() else "cpu")
     
+    width_multiplier = config['model'].get('width_multiplier', config['model'].get('alpha', 1.0))
+    print(f"Model initialization: Width Multiplier (Alpha) = {width_multiplier}")
+    
     model = DSUnet(
         in_channels=config['model']['in_channels'], 
         num_classes=config['model']['num_classes'],
-        dropout=config['model'].get('dropout', 0.5)
+        dropout=config['model'].get('dropout', 0.5),
+        width_multiplier=width_multiplier
     ).to(device)
     
     load_checkpoint(checkpoint_path, model)
@@ -86,7 +119,7 @@ def inference(config_path, checkpoint_path, image_path, output_path, lane_thresh
 
 def inference_video(config_path, checkpoint_path, video_path, output_path, lane_threshold=0.15):
     from tqdm import tqdm
-    
+    checkpoint_path = resolve_checkpoint_path(checkpoint_path)
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
         
@@ -94,10 +127,14 @@ def inference_video(config_path, checkpoint_path, video_path, output_path, lane_
     img_height = config['dataset']['image_height']
     img_width = config['dataset']['image_width']
     
+    width_multiplier = config['model'].get('width_multiplier', config['model'].get('alpha', 1.0))
+    print(f"Model initialization: Width Multiplier (Alpha) = {width_multiplier}")
+    
     model = DSUnet(
         in_channels=config['model']['in_channels'], 
         num_classes=config['model']['num_classes'],
-        dropout=config['model'].get('dropout', 0.5)
+        dropout=config['model'].get('dropout', 0.5),
+        width_multiplier=width_multiplier
     ).to(device)
     
     load_checkpoint(checkpoint_path, model)

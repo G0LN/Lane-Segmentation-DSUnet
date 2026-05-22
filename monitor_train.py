@@ -2,15 +2,17 @@ import subprocess
 import time
 import sys
 import os
+import argparse
 
-def run_training():
+def run_training(config_path="configs/default.yaml", resume=False):
     print("=" * 60)
     print("MỞ ĐẦU TIẾN TRÌNH GIÁM SÁT HUẤN LUYỆN (FAULT-TOLERANT MONITOR)")
     print("=" * 60)
     
-    config_path = "configs/default.yaml"
-    cmd = [sys.executable, "train.py"]
-    
+    cmd = [sys.executable, "train.py", "--config", config_path]
+    if resume:
+        cmd.append("--resume")
+        
     crash_count = 0
     
     while True:
@@ -36,6 +38,11 @@ def run_training():
                 print(f"[Monitor] Số lần crash ghi nhận: {crash_count}")
                 print("[Monitor] Tự động khởi động lại sau 5 giây để tiếp tục từ checkpoint...")
                 print("!" * 60 + "\n")
+                
+                # Tự động thêm cờ --resume cho các lần khởi chạy lại sau khi crash
+                if "--resume" not in cmd:
+                    cmd.append("--resume")
+                    
                 time.sleep(5)
                 
         except KeyboardInterrupt:
@@ -51,4 +58,9 @@ def run_training():
             time.sleep(5)
 
 if __name__ == "__main__":
-    run_training()
+    parser = argparse.ArgumentParser(description="Monitor DSUnet training and recover from crashes")
+    parser.add_argument('--config', type=str, default='configs/default.yaml', help='Path to config file')
+    parser.add_argument('--resume', action='store_true', help='Resume training from the latest checkpoint')
+    args = parser.parse_args()
+    
+    run_training(config_path=args.config, resume=args.resume)

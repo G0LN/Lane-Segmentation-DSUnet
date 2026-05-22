@@ -15,11 +15,16 @@ def export_and_profile(config_path, output_onnx="dsunet.onnx"):
     img_h = config['dataset']['image_height']
     img_w = config['dataset']['image_width']
     
+    # Width Scaling / Alpha
+    width_multiplier = config['model'].get('width_multiplier', config['model'].get('alpha', 1.0))
+    print(f"Model initialization: Width Multiplier (Alpha) = {width_multiplier}")
+    
     # Init model
     model = DSUnet(
         in_channels=in_channels, 
         num_classes=num_classes,
-        dropout=config['model'].get('dropout', 0.5)
+        dropout=config['model'].get('dropout', 0.5),
+        width_multiplier=width_multiplier
     ).to(device)
     model.eval()
     
