@@ -1,42 +1,40 @@
 import torch
 import torch.nn as nn
-from .components.encoder import EncoderBlock, DSConv
+from .components.encoder import EncoderBlock
 from .components.decoder import DecoderBlock
 
 class DSUnet(nn.Module):
     """
     DSUnet (Dual Stream Unet) Architecture for Lane Detection / Segmentation.
-    Using Depthwise Separable Convolutions to reduce parameters.
+    Optimized with Structural Reparameterization, Asymmetric Decoder, and Skip Compression.
     """
-    def __init__(self, in_channels=3, num_classes=4, dropout=0.5, width_multiplier=1.0):
+    def __init__(self, in_channels=3, num_classes=4, dropout=0.5, width_multiplier=1.0, deploy=False):
         super(DSUnet, self).__init__()
+        self.deploy = deploy
         
-        # Scale number of channels dynamically based on width_multiplier
+        # Scale number of channels dynamically based on width_multiplier (alpha)
         c1 = int(64 * width_multiplier)
         c2 = int(128 * width_multiplier)
         c3 = int(256 * width_multiplier)
         c4 = int(512 * width_multiplier)
         c5 = int(1024 * width_multiplier) # Bottleneck
         
-        # As per DSUNet typical structure:
-        # Dropout layers are added in the deeper layers, now configurable via a single parameter
-        
-        self.enc1 = EncoderBlock(in_channels, c1, use_pool=True)
-        self.enc2 = EncoderBlock(c1, c2, use_pool=True)
-        self.enc3 = EncoderBlock(c2, c3, use_pool=True)
-        self.enc4 = EncoderBlock(c3, c4, use_pool=True, dropout_prob=dropout)
+        # Encoder Path
+        self.enc1 = EncoderBlock(in_channels, c1, use_pool=True, deploy=deploy)
+        self.enc2 = EncoderBlock(c1, c2, use_pool=True, deploy=deploy)
+        self.enc3 = EncoderBlock(c2, c3, use_pool=True, deploy=deploy)
+        self.enc4 = EncoderBlock(c3, c4, use_pool=True, dropout_prob=dropout, deploy=deploy)
         
         # Bottleneck (No pooling)
-        self.bottleneck = EncoderBlock(c4, c5, use_pool=False, dropout_prob=dropout)
+        self.bottleneck = EncoderBlock(c4, c5, use_pool=False, dropout_prob=dropout, deploy=deploy)
         
-        self.dec4 = DecoderBlock(c5, c4, c4, dropout_prob=dropout) # The third dropout layer
-        self.dec3 = DecoderBlock(c4, c3, c3)
-        self.dec2 = DecoderBlock(c3, c2, c2)
-        self.dec1 = DecoderBlock(c2, c1, c1)
+        # Decoder Path (Asymmetric: Bilinear Upsample + skip compression + single RepDSConv)
+        self.dec4 = DecoderBlock(c5, c4, c4, dropout_prob=dropout, deploy=deploy)
+        self.dec3 = DecoderBlock(c4, c3, c3, deploy=deploy)
+        self.dec2 = DecoderBlock(c3, c2, c2, deploy=deploy)
+        self.dec1 = DecoderBlock(c2, c1, c1, deploy=deploy)
         
         # Final prediction layer: 1x1 Standard Conv
-        # We output logits (raw values). If binary, train with BCEWithLogitsLoss.
-        # If multiclass, train with CrossEntropyLoss.
         self.out_conv = nn.Conv2d(c1, num_classes, kernel_size=1)
 
     def forward(self, x):
@@ -58,13 +56,40 @@ class DSUnet(nn.Module):
         out = self.out_conv(d1)
         return out
 
+    def switch_to_deploy(self):
+        """
+        Recursively converts all Reparameterizable convolutions (RepDSConv)
+        in the model into deploy mode (fuses parallel branches into single convs).
+        """
+        if self.deploy:
+            return
+            
+        print("Fusing model branches (switch_to_deploy)...")
+        for m in self.modules():
+            if m is not self and hasattr(m, 'switch_to_deploy'):
+                m.switch_to_deploy()
+                
+        self.deploy = True
+        print("Model branches successfully fused into a clean single-path architecture!")
+
 if __name__ == "__main__":
     # Test model shape and print parameters
-    model = DSUnet(in_channels=3, num_classes=4)
-    x = torch.randn(1, 3, 256, 256)
-    y = model(x)
-    print(f"Input shape: {x.shape}")
-    print(f"Output shape: {y.shape}")
+    model = DSUnet(in_channels=3, num_classes=4, deploy=False)
+    x = torch.randn(1, 3, 256, 512)
+    model.eval()
+    
+    # Forward in training mode
+    y_train = model(x)
+    print(f"Training mode output shape: {y_train.shape}")
+    
+    # Switch to deploy mode and verify forward
+    model.switch_to_deploy()
+    y_deploy = model(x)
+    print(f"Deploy mode output shape: {y_deploy.shape}")
+    
+    # Verify outputs match
+    diff = torch.max(torch.abs(y_train - y_deploy)).item()
+    print(f"Difference between training and deploy outputs: {diff:.8f}")
     
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total trainable parameters: {total_params / 1e6:.2f} M")

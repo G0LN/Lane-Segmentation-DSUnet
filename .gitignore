@@ -13,3 +13,7 @@ kaggle_logs
 kaggle_run.ipynb
 kernel-metadata.json
 DSUNet_Architecture.md
+**.onnx
+**.data
+data/train_masks
+data/valid_masks

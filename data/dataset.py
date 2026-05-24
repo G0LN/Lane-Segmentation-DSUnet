@@ -32,32 +32,43 @@ class COCOLaneSegmentationDataset(Dataset):
     def __getitem__(self, idx):
         img_id = self.image_ids[idx]
         img_info = self.coco.loadImgs(img_id)[0]
+        file_name = img_info['file_name']
         
         # Load image
-        img_path = os.path.join(self.images_dir, img_info['file_name'])
+        img_path = os.path.join(self.images_dir, file_name)
         image = Image.open(img_path).convert("RGB")
         image = np.array(image)
         
-        # Load mask
-        ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        anns = self.coco.loadAnns(ann_ids)
-        
-        # Create empty mask (background is 0)
-        mask = np.zeros((img_info['height'], img_info['width']), dtype=np.uint8)
-        
-        # Sort annotations by area descending so smaller objects are drawn on top
-        anns = sorted(anns, key=lambda x: x.get('area', 0), reverse=True)
-        
-        for ann in anns:
-            cat_id = ann['category_id']
-            # annToMask returns 1 for pixels inside polygon
-            pixel_mask = self.coco.annToMask(ann)
-            mask[pixel_mask == 1] = cat_id
-
-        # Resize image and mask
+        # Resize image
         image = cv2.resize(image, (self.img_width, self.img_height), interpolation=cv2.INTER_LINEAR)
-        # Use NEAREST for mask to avoid interpolating category IDs
-        mask = cv2.resize(mask, (self.img_width, self.img_height), interpolation=cv2.INTER_NEAREST)
+        
+        # Fast Path: Check if pre-generated PNG mask exists (e.g. under data/train_masks)
+        masks_dir = self.images_dir + "_masks"
+        mask_filename = os.path.splitext(file_name)[0] + "_mask.png"
+        mask_path = os.path.join(masks_dir, mask_filename)
+        
+        if os.path.exists(mask_path):
+            # Load the pre-generated and pre-resized 256x512 mask directly
+            mask = Image.open(mask_path)
+            mask = np.array(mask)
+        else:
+            # Fallback Path: Slow COCO polygon rendering on the fly
+            ann_ids = self.coco.getAnnIds(imgIds=img_id)
+            anns = self.coco.loadAnns(ann_ids)
+            
+            # Create empty mask (background is 0)
+            mask = np.zeros((img_info['height'], img_info['width']), dtype=np.uint8)
+            
+            # Sort annotations by area descending so smaller objects are drawn on top
+            anns = sorted(anns, key=lambda x: x.get('area', 0), reverse=True)
+            
+            for ann in anns:
+                cat_id = ann['category_id']
+                pixel_mask = self.coco.annToMask(ann)
+                mask[pixel_mask == 1] = cat_id
+                
+            # Resize mask to target size (256x512)
+            mask = cv2.resize(mask, (self.img_width, self.img_height), interpolation=cv2.INTER_NEAREST)
 
         # Apply transformations (e.g., albumentations)
         if self.transform is not None:

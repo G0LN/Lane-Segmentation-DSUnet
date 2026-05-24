@@ -153,7 +153,7 @@ def main(config_path="configs/default.yaml", resume=False):
     ).to(device)
     
     # Loss and Optimizer
-    criterion = get_criterion(config['loss']['type'])
+    criterion = get_criterion(config['loss']['type'], num_classes=num_classes, device=device)
     optimizer = optim.Adam(model.parameters(), 
                            lr=config['training']['learning_rate'], 
                            weight_decay=config['training']['weight_decay'])

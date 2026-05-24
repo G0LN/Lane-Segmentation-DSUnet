@@ -79,6 +79,7 @@ def evaluate(config_path, checkpoint_path, save_dir='results'):
     print(f"Loading checkpoint from {checkpoint_path}")
     load_checkpoint(checkpoint_path, model)
     model.eval()
+    model.switch_to_deploy()
     
     conf_matrix = np.zeros((num_classes, num_classes))
     

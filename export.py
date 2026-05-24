@@ -27,6 +27,7 @@ def export_and_profile(config_path, output_onnx="dsunet.onnx"):
         width_multiplier=width_multiplier
     ).to(device)
     model.eval()
+    model.switch_to_deploy()
     
     # Create dummy input
     dummy_input = torch.randn(1, in_channels, img_h, img_w).to(device)

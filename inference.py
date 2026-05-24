@@ -103,6 +103,7 @@ def inference(config_path, checkpoint_path, image_path, output_path, lane_thresh
     
     load_checkpoint(checkpoint_path, model)
     model.eval()
+    model.switch_to_deploy()
     
     print(f"Running inference on {image_path} with lane_threshold={lane_threshold}...")
     original_img, mask_img = predict_image(
@@ -139,6 +140,7 @@ def inference_video(config_path, checkpoint_path, video_path, output_path, lane_
     
     load_checkpoint(checkpoint_path, model)
     model.eval()
+    model.switch_to_deploy()
     
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
