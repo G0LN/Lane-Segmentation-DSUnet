@@ -5,8 +5,10 @@ from .components.decoder import DecoderBlock
 
 class DSUnet(nn.Module):
     """
-    DSUnet (Dual Stream Unet) Architecture for Lane Detection / Segmentation.
-    Optimized with Structural Reparameterization, Asymmetric Decoder, and Skip Compression.
+    Bilateral DSUnet (B-DSUnet) Architecture for Lane Detection / Segmentation.
+    Optimized with a Stem Block for early downsampling (saving massive FLOPs),
+    a Direct Spatial Detail Injection Branch to preserve high-resolution boundary details,
+    an Asymmetric Decoder, and Skip Connection Compression.
     """
     def __init__(self, in_channels=3, num_classes=4, dropout=0.5, width_multiplier=1.0, deploy=False):
         super(DSUnet, self).__init__()
@@ -19,16 +21,33 @@ class DSUnet(nn.Module):
         c4 = int(512 * width_multiplier)
         c5 = int(1024 * width_multiplier) # Bottleneck
         
-        # Encoder Path
-        self.enc1 = EncoderBlock(in_channels, c1, use_pool=True, deploy=deploy)
+        # 1. Stem Block: Immediately downsamples the input image by 2x (from 256x512 to 128x256)
+        # using a fast Conv 3x3 with stride=2. This saves massive FLOPs for the entire encoder!
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, c1, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(c1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # 2. Direct Spatial Detail Injection Branch:
+        # Projects raw high-res image (256x512) directly to c1 channels to serve as
+        # skip connection detail for the final decoder block dec1, bypassing the entire Encoder.
+        # This preserves crisp boundaries of thin objects (like lanes) with negligible FLOPs.
+        self.spatial_projector = nn.Sequential(
+            nn.Conv2d(in_channels, c1, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(c1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # 3. Encoder Path (Starts directly at 128x256 resolution)
         self.enc2 = EncoderBlock(c1, c2, use_pool=True, deploy=deploy)
         self.enc3 = EncoderBlock(c2, c3, use_pool=True, deploy=deploy)
         self.enc4 = EncoderBlock(c3, c4, use_pool=True, dropout_prob=dropout, deploy=deploy)
         
-        # Bottleneck (No pooling)
+        # Bottleneck (No pooling, 16x32 resolution)
         self.bottleneck = EncoderBlock(c4, c5, use_pool=False, dropout_prob=dropout, deploy=deploy)
         
-        # Decoder Path (Asymmetric: Bilinear Upsample + skip compression + single RepDSConv)
+        # 4. Decoder Path (Upsampling and fusing features)
         self.dec4 = DecoderBlock(c5, c4, c4, dropout_prob=dropout, deploy=deploy)
         self.dec3 = DecoderBlock(c4, c3, c3, deploy=deploy)
         self.dec2 = DecoderBlock(c3, c2, c2, deploy=deploy)
@@ -38,20 +57,25 @@ class DSUnet(nn.Module):
         self.out_conv = nn.Conv2d(c1, num_classes, kernel_size=1)
 
     def forward(self, x):
-        # Encoding
-        skip1, p1 = self.enc1(x)
+        # 1. Direct Spatial Detail Injection skip connection (at 256x512)
+        skip_spatial = self.spatial_projector(x)
+        
+        # 2. Early Downsampling via Stem (to 128x256)
+        p1 = self.stem(x)
+        
+        # 3. Encoding Path
         skip2, p2 = self.enc2(p1)
         skip3, p3 = self.enc3(p2)
         skip4, p4 = self.enc4(p3)
         
-        # Bottleneck
+        # 4. Bottleneck
         b = self.bottleneck(p4)
         
-        # Decoding
+        # 5. Decoding Path
         d4 = self.dec4(b, skip4)
         d3 = self.dec3(d4, skip3)
         d2 = self.dec2(d3, skip2)
-        d1 = self.dec1(d2, skip1)
+        d1 = self.dec1(d2, skip_spatial) # Fuse with high-res injected spatial features!
         
         out = self.out_conv(d1)
         return out
