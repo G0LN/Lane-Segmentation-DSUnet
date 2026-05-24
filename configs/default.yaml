@@ -21,7 +21,7 @@ model:
   # Classes: 9 (including background id 0)
   num_classes: 9
   # Dropout rate for deep layers (enc4, bottleneck, dec4)
-  dropout: 0.5
+  dropout: 0.2
   # Width Scaling (Width Multiplier / Alpha)
   # 1.0: Baseline (6.00M params), 0.5: Lite (1.50M params), 0.25: Tiny (0.38M params)
   # You can configure either 'width_multiplier' or 'alpha'

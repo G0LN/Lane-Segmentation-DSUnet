@@ -49,13 +49,15 @@ def resolve_checkpoint_path(checkpoint_path):
     return checkpoint_path
 
 def predict_image(image_path, model, device, img_height, img_width, lane_threshold=0.15):
-    # Load and preprocess image
-    image = Image.open(image_path).convert("RGB")
-    original_size = image.size
-    image = image.resize((img_width, img_height))
+    # Load original image
+    original_img_pil = Image.open(image_path).convert("RGB")
+    original_img = np.array(original_img_pil)
+    original_size = (original_img.shape[1], original_img.shape[0]) # (width, height)
     
-    image_np = np.array(image)
-    image_tensor = torch.from_numpy(image_np.transpose((2, 0, 1))).float() / 255.0
+    # Preprocess image using exact same resizing as training (OpenCV INTER_LINEAR)
+    image_resized = cv2.resize(original_img, (img_width, img_height), interpolation=cv2.INTER_LINEAR)
+    
+    image_tensor = torch.from_numpy(image_resized.transpose((2, 0, 1))).float() / 255.0
     image_tensor = image_tensor.unsqueeze(0).to(device) # Add batch dimension
     
     # Inference
@@ -82,7 +84,7 @@ def predict_image(image_path, model, device, img_height, img_width, lane_thresho
     # Resize back to original
     pred_colored = cv2.resize(pred_colored, original_size, interpolation=cv2.INTER_NEAREST)
     
-    return image_np, pred_colored
+    return original_img, pred_colored
 
 def inference(config_path, checkpoint_path, image_path, output_path, lane_threshold=0.15):
     checkpoint_path = resolve_checkpoint_path(checkpoint_path)
@@ -113,8 +115,11 @@ def inference(config_path, checkpoint_path, image_path, output_path, lane_thresh
         lane_threshold=lane_threshold
     )
     
-    # Blend image and mask
-    blended = cv2.addWeighted(cv2.cvtColor(original_img, cv2.COLOR_RGB2BGR), 0.5, mask_img, 0.5, 0)
+    # Convert mask_img from RGB to BGR before blending with BGR image
+    mask_bgr = cv2.cvtColor(mask_img, cv2.COLOR_RGB2BGR)
+    
+    # Blend image and mask at original resolution
+    blended = cv2.addWeighted(cv2.cvtColor(original_img, cv2.COLOR_RGB2BGR), 0.5, mask_bgr, 0.5, 0)
     cv2.imwrite(output_path, blended)
     print(f"Saved result to {output_path}")
 
@@ -192,9 +197,10 @@ def inference_video(config_path, checkpoint_path, video_path, output_path, lane_
             
         pred_colored = COLORS[pred]
         pred_colored = cv2.resize(pred_colored, (width, height), interpolation=cv2.INTER_NEAREST)
+        pred_colored_bgr = cv2.cvtColor(pred_colored, cv2.COLOR_RGB2BGR)
         
         # Blend frame and mask
-        blended = cv2.addWeighted(frame, 0.5, pred_colored, 0.5, 0)
+        blended = cv2.addWeighted(frame, 0.5, pred_colored_bgr, 0.5, 0)
         
         # Calculate actual FPS
         elapsed_time = time.time() - start_time

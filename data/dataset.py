@@ -25,6 +25,32 @@ class COCOLaneSegmentationDataset(Dataset):
         print(f"Loading annotations from {json_path}...")
         self.coco = COCO(json_path)
         self.image_ids = list(self.coco.imgs.keys())
+        
+        # Auto-pregenerate masks if missing or incomplete
+        masks_dir = self.images_dir + "_masks"
+        need_generate = False
+        if not os.path.exists(masks_dir):
+            need_generate = True
+        else:
+            try:
+                mask_files = [f for f in os.listdir(masks_dir) if f.lower().endswith('.png')]
+                if len(mask_files) < len(self.image_ids):
+                    print(f"[Auto-Generator] Mask directory '{masks_dir}' is incomplete ({len(mask_files)}/{len(self.image_ids)}). Triggering regeneration...")
+                    need_generate = True
+            except Exception:
+                need_generate = True
+                
+        if need_generate:
+            print(f"[Auto-Generator] Missing masks detected. Automatically pregenerating mask PNGs from COCO JSON...")
+            from pregenerate_masks import pregenerate_dataset_masks
+            pregenerate_dataset_masks(
+                json_path=json_path,
+                images_dir=images_dir,
+                output_masks_dir=masks_dir,
+                img_height=img_height,
+                img_width=img_width
+            )
+            print(f"[Auto-Generator] Pregeneration completed for {images_dir}!\n")
 
     def __len__(self):
         return len(self.image_ids)
