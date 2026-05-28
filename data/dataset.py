@@ -42,7 +42,7 @@ class COCOLaneSegmentationDataset(Dataset):
                 
         if need_generate:
             print(f"[Auto-Generator] Missing masks detected. Automatically pregenerating mask PNGs from COCO JSON...")
-            from pregenerate_masks import pregenerate_dataset_masks
+            from utils.pregenerate_masks import pregenerate_dataset_masks
             pregenerate_dataset_masks(
                 json_path=json_path,
                 images_dir=images_dir,

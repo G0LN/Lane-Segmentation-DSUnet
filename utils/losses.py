@@ -49,12 +49,12 @@ def get_criterion(loss_type="CrossEntropyLoss", num_classes=9, device=None):
         # 2: continuous yellow (5.0)
         # 3: dashed (5.0)
         # 4: double continuous yellow (5.0)
-        # 5: main-lane (3.0)
-        # 6: other-lane (3.0)
-        # 7: turn-lane (3.0)
+        # 5: main-lane (6.0)
+        # 6: other-lane (6.0)
+        # 7: turn-lane (6.0)
         # 8: vehicle (1.5)
         if num_classes == 9:
-            ce_weight = torch.tensor([1.0, 5.0, 5.0, 5.0, 5.0, 3.0, 3.0, 3.0, 1.5], dtype=torch.float, device=device)
+            ce_weight = torch.tensor([1.0, 5.0, 5.0, 5.0, 5.0, 6.0, 6.0, 6.0, 1.5], dtype=torch.float, device=device)
             print(f"Applying Class Weights in Loss: {ce_weight.cpu().numpy()}")
         else:
             ce_weight = None

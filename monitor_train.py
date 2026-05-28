@@ -6,7 +6,7 @@ import argparse
 
 def run_training(config_path="configs/default.yaml", resume=False):
     print("=" * 60)
-    print("MỞ ĐẦU TIẾN TRÌNH GIÁM SÁT HUẤN LUYỆN (FAULT-TOLERANT MONITOR)")
+    print("      FAULT-TOLERANT TRAINING MONITOR PROCESS      ")
     print("=" * 60)
     
     cmd = [sys.executable, "train.py", "--config", config_path]
@@ -16,11 +16,11 @@ def run_training(config_path="configs/default.yaml", resume=False):
     crash_count = 0
     
     while True:
-        print(f"\n[Monitor] Đang khởi chạy tiến trình huấn luyện chính: {' '.join(cmd)}")
-        print(f"[Monitor] Thời gian bắt đầu: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\n[Monitor] Launching main training process: {' '.join(cmd)}")
+        print(f"[Monitor] Start Time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
         
         try:
-            # Khởi chạy train.py và đợi tiến trình kết thúc
+            # Start train.py and wait for it to finish
             process = subprocess.Popen(cmd)
             process.wait()
             
@@ -28,18 +28,18 @@ def run_training(config_path="configs/default.yaml", resume=False):
             
             if return_code == 0:
                 print("\n" + "=" * 60)
-                print("[Monitor] TIẾN TRÌNH HUẤN LUYỆN ĐÃ HOÀN THÀNH THÀNH CÔNG (Exit Code 0).")
+                print("[Monitor] TRAINING COMPLETED SUCCESSFULLY (Exit Code 0).")
                 print("=" * 60)
                 break
             else:
                 crash_count += 1
                 print("\n" + "!" * 60)
-                print(f"[Monitor] CẢNH BÁO: Tiến trình huấn luyện bị crash (Exit Code: {return_code}).")
-                print(f"[Monitor] Số lần crash ghi nhận: {crash_count}")
-                print("[Monitor] Tự động khởi động lại sau 5 giây để tiếp tục từ checkpoint...")
+                print(f"[Monitor] WARNING: Training process crashed (Exit Code: {return_code}).")
+                print(f"[Monitor] Total recorded crashes: {crash_count}")
+                print("[Monitor] Automatically restarting in 5 seconds to resume from last checkpoint...")
                 print("!" * 60 + "\n")
                 
-                # Tự động thêm cờ --resume cho các lần khởi chạy lại sau khi crash
+                # Auto-append --resume flag for restart runs after crash
                 if "--resume" not in cmd:
                     cmd.append("--resume")
                     
@@ -47,18 +47,18 @@ def run_training(config_path="configs/default.yaml", resume=False):
                 
         except KeyboardInterrupt:
             print("\n" + "=" * 60)
-            print("[Monitor] Người dùng đã dừng chương trình bằng tổ hợp phím Ctrl+C.")
-            print("[Monitor] Tiến trình giám sát kết thúc.")
+            print("[Monitor] Training stopped by user (Ctrl+C).")
+            print("[Monitor] Monitoring process terminated.")
             print("=" * 60)
             break
         except Exception as e:
             crash_count += 1
-            print(f"[Monitor] Lỗi không xác định khi giám sát: {e}")
-            print("[Monitor] Thử lại sau 5 giây...")
+            print(f"[Monitor] Unknown error during monitoring: {e}")
+            print("[Monitor] Retrying in 5 seconds...")
             time.sleep(5)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Monitor DSUnet training and recover from crashes")
+    parser = argparse.ArgumentParser(description="Monitor B-DSUnet training and recover from crashes")
     parser.add_argument('--config', type=str, default='configs/default.yaml', help='Path to config file')
     parser.add_argument('--resume', action='store_true', help='Resume training from the latest checkpoint')
     args = parser.parse_args()

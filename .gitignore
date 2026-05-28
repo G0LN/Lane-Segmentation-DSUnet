@@ -15,5 +15,6 @@ kernel-metadata.json
 DSUNet_Architecture.md
 **.onnx
 **.data
+**.zip
 data/train_masks
 data/valid_masks

@@ -1,11 +1,21 @@
+import os
+import sys
 import argparse
 import yaml
 import torch
 from thop import profile
 from thop import clever_format
+
+# Add parent directory to sys.path to allow importing from models
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import DSUnet
 
 def export_and_profile(config_path, output_onnx="dsunet.onnx"):
+    if not os.path.exists(config_path):
+        print(f"[Error] Config file not found at {config_path}")
+        return
+        
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
         
