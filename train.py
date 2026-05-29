@@ -145,6 +145,7 @@ class Trainer:
     def _train_epoch(self, epoch):
         self.model.train()
         running_loss = 0.0
+        valid_batches = 0
         for images, masks in tqdm(self.train_loader, desc=f"Epoch {epoch+1} Train"):
             images = images.to(self.device)
             masks = masks.to(self.device)
@@ -152,12 +153,35 @@ class Trainer:
             self.optimizer.zero_grad()
             outputs = self.model(images)
             loss = self.criterion(outputs, masks)
+            
+            if torch.isnan(loss) or torch.isinf(loss):
+                print(f"\n[Warning] NaN/Inf Loss detected at Epoch {epoch+1}! Skipping this batch.")
+                self.optimizer.zero_grad()
+                continue
+                
             loss.backward()
-            self.optimizer.step()
             
-            running_loss += loss.item()
+            # Verify gradients are finite before step
+            is_finite = True
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    if not torch.isfinite(p.grad).all():
+                        is_finite = False
+                        break
             
-        return running_loss / len(self.train_loader)
+            if is_finite:
+                # Prevent Gradient Explosion (NaN loss) using Gradient Clipping
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                self.optimizer.step()
+                running_loss += loss.item()
+                valid_batches += 1
+            else:
+                print(f"\n[Warning] NaN/Inf Gradients detected at Epoch {epoch+1}! Skipping optimizer step to prevent weight corruption.")
+                self.optimizer.zero_grad()
+                
+        if valid_batches == 0:
+            return 0.0
+        return running_loss / valid_batches
 
     def _validate_epoch(self, epoch):
         self.model.eval()
