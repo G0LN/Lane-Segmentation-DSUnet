@@ -1,10 +1,19 @@
 import os
 import re
 import yaml
+import gc
 import torch
 import torch.optim as optim
 import numpy as np
 from tqdm import tqdm
+import torch.multiprocessing as mp
+
+# Configure PyTorch multiprocessing to prevent system RAM leaks (Exit Code 137)
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 from models import DSUnet
 from data import get_dataloaders
@@ -226,6 +235,10 @@ class Trainer:
             
         metrics['precision_curve'] = precision_curve
         metrics['recall_curve'] = recall_curve
+        
+        # Free memory leaks after each validation epoch to prevent Kaggle OOM (Exit Code 137)
+        gc.collect()
+        torch.cuda.empty_cache()
         
         return running_loss / len(self.val_loader), metrics
 
